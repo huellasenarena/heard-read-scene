@@ -1,0 +1,15 @@
+{
+  "name": "heard-read-scene",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-04-07",
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "heard-read-scene",
+      "database_id": "28bb2b01-a732-4ed9-8842-6af04c0ecdcd"
+    }
+  ],
+  "observability": { "enabled": true }
+}
