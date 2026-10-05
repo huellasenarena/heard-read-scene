@@ -224,14 +224,14 @@ function connexion() {
 function accueil() {
   const enListe = donnees.oeuvres.filter((o) => o.statut === 'liste').length;
   const enArchive = donnees.oeuvres.length - enListe;
-  const lien = (cible, libelle, note) => h('a', { href: cible }, libelle, h('span', {}, note));
+  const lien = (cible, libelle, note) => h('a', { href: cible }, libelle, note && h('span', {}, note));
   const aujourdhui = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     .format(new Date());
   return h('div', { class: 'accueil' },
     h('div', { class: 'marque' }, 'heard · read · scene'),
     h('nav', {},
-      lien('#/ajouter', 'Ajouter à la liste', 'i'),
-      lien('#/entree', 'Créer une entrée', 'ii'),
+      lien('#/ajouter', 'Ajouter à la liste'),
+      lien('#/entree', 'Créer une entrée'),
       lien('#/liste', 'Liste', `${enListe} à découvrir`),
       lien('#/archive', 'Archive', pluriel(enArchive, 'entrée'))),
     h('div', { class: 'date' }, aujourdhui));
@@ -470,10 +470,12 @@ function collection(statut) {
     }
     if (etat.langue && !compteLangues.has(etat.langue)) etat.langue = '';
     const langues = [...compteLangues.entries()].sort((a, b) => b[1] - a[1]).map(([l]) => [l, l]);
+    // Pas de ligne de langues s'il n'y a rien à choisir.
     zoneFiltres.replaceChildren(
       choix([['', 'tout'], ...FORMATS.map((f) => [f, f])], etat.format, (f) => { etat.format = f; majTout(); }),
-      langues.length > 1 && choix([['', 'toutes langues'], ...langues], etat.langue,
-        (l) => { etat.langue = l; dessinerResultats(); }, 'petit'));
+      ...(langues.length > 1
+        ? [choix([['', 'toutes langues'], ...langues], etat.langue, (l) => { etat.langue = l; dessinerResultats(); }, 'petit')]
+        : []));
   }
 
   function meta(o) {

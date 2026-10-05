@@ -84,7 +84,7 @@ await taper('input[type=password]', 'essai-local');
 await cliquer('.principal');
 await attendre(600);
 verifier('accueil après connexion', (await ev("document.querySelectorAll('.accueil nav a').length")) === 4);
-const avant = await ev("document.querySelectorAll('.accueil nav a span')[2].textContent");
+const avant = await ev("document.querySelectorAll('.accueil nav a span')[0].textContent");
 verifier('compte de la liste', /^\d+ à découvrir$/.test(avant), avant);
 await capture('01-accueil.png');
 
@@ -183,6 +183,7 @@ await taper('.recherche', 'corrigee');
 await attendre(100);
 verifier('recherche dans le texte des notes, sans accents', (await ev("document.querySelectorAll('.oeuvres .t').length")) === 1);
 await capture('06-archive.png');
+verifier('pas de « false » dans les filtres', !(await texte('.filtres')).includes('false'), await texte('.filtres'));
 
 console.log("\nsupprimer l'œuvre");
 await cliquer('.oeuvres a');
@@ -195,7 +196,7 @@ await cliquerTexte('button', 'confirmer la suppression');
 await attendre(900);
 verifier("retour à l'archive", (await ev('location.hash')) === '#/archive');
 await aller('#/');
-verifier('compte revenu à son état initial', (await ev("document.querySelectorAll('.accueil nav a span')[2].textContent")) === avant);
+verifier('compte revenu à son état initial', (await ev("document.querySelectorAll('.accueil nav a span')[0].textContent")) === avant);
 
 verifier('aucune erreur JavaScript', erreurs.length === 0, erreurs.join(' | '));
 console.log(echecs ? `\n${echecs} échec(s)` : '\ntout est bon');
