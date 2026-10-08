@@ -25,6 +25,17 @@ utilisateur, sur iPad et Mac. Le but : **simple, minimaliste, direct.**
 - **Langue** : langue originale pour les films (`muet`, `sans dialogue` existent aussi),
   langue de l'édition pour les livres. Filtre par langue dans Liste et Archive,
   affiché seulement s'il y a au moins deux langues à choisir.
+- **Doublons** : avant de créer une œuvre (liste, entrée, import), l'app signale celles
+  du même format au titre proche (`seRessemblent`, dans `app.js` et copiée dans le Worker) :
+  mêmes mots dans le désordre, ou 80 % des lettres en commun ; article initial ignoré,
+  numéros différents = œuvres distinctes. Un second clic (« … quand même ») crée malgré tout.
+- **Import iA Writer** : un raccourci iPad (feuille de partage) envoie le texte brut à
+  `POST /importer`. En-tête `Titre:` / `Format:` (et `Auteur:` pour les homonymes), le
+  reste devient **une note telle quelle** ; l'œuvre est créée si besoin. Usage : sessions
+  de piano, l'utilisateur efface le texte après l'envoi. Si une note du fil s'y trouve
+  déjà en entier (oubli d'effacer), on **ne retire rien** : réponse « ⚠︎ … Continuer ? »
+  (ne pas mélanger les séances), le raccourci renvoie alors avec `?continuer`. Même « ⚠︎ »
+  si le titre ressemble à une autre œuvre. Réponses en texte simple, pour le raccourci.
 - **Italique** : `*comme ça*`, avec le bouton *I* ou ⌘I. C'est le seul enrichissement.
 - **Modifier** passe toujours par un bouton (« modifier »), jamais par un tap sur
   le texte, pour qu'on puisse le sélectionner. Toute suppression demande deux clics.
