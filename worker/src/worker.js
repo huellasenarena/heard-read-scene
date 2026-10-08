@@ -72,7 +72,7 @@ export default {
     }
 
     try {
-      if (ressource === 'importer' && methode === 'POST') return await importer(await requete.text(), env);
+      if (ressource === 'importer' && methode === 'POST') return await importer(await requete.text(), url.searchParams.has('continuer'), env);
       const corps = methode === 'POST' || methode === 'PATCH' ? await requete.json() : {};
       if (ressource === 'tout' && methode === 'GET') return await tout(env);
       if (ressource === 'oeuvres' && !id && methode === 'POST') return await creerOeuvre(corps, env);
@@ -168,9 +168,10 @@ async function supprimerNote(id, env) {
 
 // Importer un fichier texte (depuis un raccourci iA Writer). En tête, des lignes
 // « Clé: valeur » (Titre, Format, et au besoin Auteur, Langue, Lien) ; le reste
-// devient une note sur cette œuvre. Si on a oublié d'effacer le texte déjà
-// envoyé, les notes existantes qui s'y trouvent en entier sont retirées : seul
-// ce qui est nouveau est ajouté. Réponse en texte simple, pour le raccourci.
+// devient une note sur cette œuvre, telle quelle. Si une note du fil s'y trouve
+// déjà en entier (texte d'une séance précédente pas effacé ?), rien n'est ajouté :
+// la réponse commence par « ⚠︎ » et le raccourci demande s'il faut continuer,
+// auquel cas il renvoie avec `?continuer`. Réponse en texte simple, pour le raccourci.
 const CLES = { titre: 'titre', format: 'format', auteur: 'auteur', langue: 'langue', lien: 'lien' };
 const sansAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const texte = (message, statut = 200) =>
@@ -178,7 +179,7 @@ const texte = (message, statut = 200) =>
 // Pour comparer : fins de ligne unifiées, sans espaces en bout de ligne.
 const normaliser = (s) => s.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim();
 
-async function importer(brut, env) {
+async function importer(brut, continuer, env) {
   const lignes = normaliser(brut).split('\n');
   const champs = {};
   let i = 0;
@@ -207,18 +208,22 @@ async function importer(brut, env) {
   }
   const oeuvre = trouvees[0];
 
-  // Retirer ce qui est déjà dans le fil, les notes les plus longues d'abord.
   // Les puces vides (celle qu'on laisse en bas pour la suite) ne comptent pas.
-  let corps = lignes.slice(i).filter((l) => !/^\s*[*+-]\s*$/.test(l)).join('\n').trim();
-  if (oeuvre) {
-    const { results: notes } = await env.DB.prepare('select texte from notes where oeuvre = ?').bind(oeuvre.id).all();
-    for (const n of notes.map((n) => normaliser(n.texte)).sort((a, b) => b.length - a.length)) {
-      if (n && corps.includes(n)) corps = corps.split(n).join('');
+  const corps = lignes.slice(i).filter((l) => !/^\s*[*+-]\s*$/.test(l)).join('\n')
+    .replace(/\n{3,}/g, '\n\n').trim().slice(0, 50000);
+  // Rien que des blancs ou de la ponctuation : rien à ajouter.
+  if (!/[\p{L}\p{N}]/u.test(corps)) return texte(`${oeuvre?.titre || champs.titre} : rien à ajouter.`);
+
+  if (oeuvre && !continuer) {
+    const { results: notes } = await env.DB.prepare('select texte, cree from notes where oeuvre = ? order by cree desc')
+      .bind(oeuvre.id).all();
+    const deja = notes.find((n) => normaliser(n.texte) && corps.includes(normaliser(n.texte)));
+    if (deja) {
+      const jour = new Date(deja.cree).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const debut = ligne(deja.texte, 60);
+      return texte(`⚠︎ Il paraît que ce texte contient déjà la note du ${jour} (« ${debut}${debut.length < ligne(deja.texte).length ? '…' : ''} »). Continuer ?`);
     }
   }
-  corps = corps.replace(/\n{3,}/g, '\n\n').trim().slice(0, 50000);
-  // Rien que des blancs ou de la ponctuation : rien de nouveau.
-  if (!/[\p{L}\p{N}]/u.test(corps)) return texte(`${oeuvre?.titre || champs.titre} : rien de nouveau.`);
 
   const maintenant = Date.now();
   const requetes = [];

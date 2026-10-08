@@ -37,10 +37,13 @@ Format: Musique
 ```
 
 L'œuvre est retrouvée par titre + format (`Auteur:` départage les homonymes),
-ou créée dans l'archive ; une œuvre de la liste passe dans l'archive. Les notes
-déjà dans son fil qui se retrouvent en entier dans le texte en sont retirées :
-renvoyer un fichier pas encore effacé n'ajoute que ce qui est nouveau.
+ou créée dans l'archive ; une œuvre de la liste passe dans l'archive. Le texte
+devient une note, tel quel. Si une note du fil s'y trouve déjà en entier (une
+séance précédente pas effacée ?), rien n'est ajouté : la réponse commence par
+« ⚠︎ » et demande s'il faut continuer ; `POST /importer?continuer` ajoute quand même.
 
 Le raccourci (iPad) : feuille de partage, entrée Texte et Fichiers ;
 « Obtenir le contenu de l'URL » (POST, en-tête `X-Phrase`, corps Fichier =
-Entrée du raccourci) ; « Afficher la notification » avec le contenu de l'URL.
+Entrée du raccourci) ; si le résultat commence par « ⚠︎ », « Afficher l'alerte »
+(avec Annuler) puis le même envoi vers `/importer?continuer` ; enfin « Afficher
+la notification » avec le contenu de l'URL.
