@@ -24,3 +24,23 @@ node outils/essai-navigateur.mjs      # essai de bout en bout (Chrome headless)
 cd worker && wrangler deploy          # le Worker
 git push                              # l'app (GitHub Pages)
 ```
+
+## Importer depuis iA Writer
+
+`POST /importer` (avec `X-Phrase`) reçoit un texte brut :
+
+```
+Titre: Once Upon a Dream
+Format: Musique
+
+* page 3: 6:23; plus vite encore
+```
+
+L'œuvre est retrouvée par titre + format (`Auteur:` départage les homonymes),
+ou créée dans l'archive ; une œuvre de la liste passe dans l'archive. Les notes
+déjà dans son fil qui se retrouvent en entier dans le texte en sont retirées :
+renvoyer un fichier pas encore effacé n'ajoute que ce qui est nouveau.
+
+Le raccourci (iPad) : feuille de partage, entrée Texte et Fichiers ;
+« Obtenir le contenu de l'URL » (POST, en-tête `X-Phrase`, corps Fichier =
+Entrée du raccourci) ; « Afficher la notification » avec le contenu de l'URL.

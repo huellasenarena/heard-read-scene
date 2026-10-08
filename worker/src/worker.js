@@ -72,6 +72,7 @@ export default {
     }
 
     try {
+      if (ressource === 'importer' && methode === 'POST') return await importer(await requete.text(), env);
       const corps = methode === 'POST' || methode === 'PATCH' ? await requete.json() : {};
       if (ressource === 'tout' && methode === 'GET') return await tout(env);
       if (ressource === 'oeuvres' && !id && methode === 'POST') return await creerOeuvre(corps, env);
@@ -163,4 +164,78 @@ async function modifierNote(id, corps, env) {
 async function supprimerNote(id, env) {
   await env.DB.prepare('delete from notes where id = ?').bind(id).run();
   return json({ ok: true });
+}
+
+// Importer un fichier texte (depuis un raccourci iA Writer). En tête, des lignes
+// « Clé: valeur » (Titre, Format, et au besoin Auteur, Langue, Lien) ; le reste
+// devient une note sur cette œuvre. Si on a oublié d'effacer le texte déjà
+// envoyé, les notes existantes qui s'y trouvent en entier sont retirées : seul
+// ce qui est nouveau est ajouté. Réponse en texte simple, pour le raccourci.
+const CLES = { titre: 'titre', format: 'format', auteur: 'auteur', langue: 'langue', lien: 'lien' };
+const sansAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const texte = (message, statut = 200) =>
+  new Response(message, { status: statut, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...ENTETES } });
+// Pour comparer : fins de ligne unifiées, sans espaces en bout de ligne.
+const normaliser = (s) => s.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim();
+
+async function importer(brut, env) {
+  const lignes = normaliser(brut).split('\n');
+  const champs = {};
+  let i = 0;
+  for (; i < lignes.length; i++) {
+    if (!lignes[i].trim()) continue;
+    const m = lignes[i].match(/^\s*([^:]+?)\s*:\s*(.*)$/);
+    const cle = m && CLES[sansAccents(m[1])];
+    if (!cle) break;
+    champs[cle] = m[2];
+  }
+  if (!champs.titre) return texte('Il manque la ligne « Titre: … » en tête du fichier.', 400);
+  const format = FORMATS.find((f) => sansAccents(f) === sansAccents(champs.format || ''));
+  if (!format) return texte('Il manque la ligne « Format: » (Vidéo, Texte ou Musique).', 400);
+  champs.titre = ligne(champs.titre);
+  champs.format = format;
+
+  // L'œuvre, par titre + format ; l'auteur départage les homonymes.
+  const { results } = await env.DB.prepare('select id, titre, auteur, statut from oeuvres where format = ?')
+    .bind(format).all();
+  let trouvees = results.filter((o) => sansAccents(o.titre) === sansAccents(champs.titre));
+  if (trouvees.length > 1 && champs.auteur) {
+    trouvees = trouvees.filter((o) => sansAccents(o.auteur) === sansAccents(ligne(champs.auteur)));
+  }
+  if (trouvees.length > 1) {
+    return texte(`Plusieurs œuvres « ${champs.titre} » : ajoute une ligne « Auteur: … » pour choisir.`, 400);
+  }
+  const oeuvre = trouvees[0];
+
+  // Retirer ce qui est déjà dans le fil, les notes les plus longues d'abord.
+  // Les puces vides (celle qu'on laisse en bas pour la suite) ne comptent pas.
+  let corps = lignes.slice(i).filter((l) => !/^\s*[*+-]\s*$/.test(l)).join('\n').trim();
+  if (oeuvre) {
+    const { results: notes } = await env.DB.prepare('select texte from notes where oeuvre = ?').bind(oeuvre.id).all();
+    for (const n of notes.map((n) => normaliser(n.texte)).sort((a, b) => b.length - a.length)) {
+      if (n && corps.includes(n)) corps = corps.split(n).join('');
+    }
+  }
+  corps = corps.replace(/\n{3,}/g, '\n\n').trim().slice(0, 50000);
+  // Rien que des blancs ou de la ponctuation : rien de nouveau.
+  if (!/[\p{L}\p{N}]/u.test(corps)) return texte(`${oeuvre?.titre || champs.titre} : rien de nouveau.`);
+
+  const maintenant = Date.now();
+  const requetes = [];
+  let id = oeuvre?.id;
+  if (oeuvre) {
+    requetes.push(env.DB.prepare("update oeuvres set statut = 'archive' where id = ?").bind(id));
+  } else {
+    const o = { id: crypto.randomUUID(), ...champsOeuvre(champs, false) };
+    id = o.id;
+    requetes.push(env.DB.prepare(
+      "insert into oeuvres (id, titre, format, auteur, langue, lien, statut, ajoute) values (?, ?, ?, ?, ?, ?, 'archive', ?)"
+    ).bind(o.id, o.titre, o.format, o.auteur, o.langue, o.lien, maintenant));
+  }
+  requetes.push(env.DB.prepare('insert into notes (id, oeuvre, texte, cree) values (?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), id, corps, maintenant));
+  await env.DB.batch(requetes);
+
+  const ou = !oeuvre ? ' (nouvelle œuvre dans l’archive)' : oeuvre.statut === 'liste' ? ' (passée dans l’archive)' : '';
+  return texte(`✓ ${oeuvre?.titre || champs.titre} : note ajoutée${ou}.`, 201);
 }
