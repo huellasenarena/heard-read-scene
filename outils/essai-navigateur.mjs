@@ -101,6 +101,15 @@ await cliquer('form .principal');
 await attendre(800);
 verifier('confirmation', (await texte('.message')) === '« Essai de titre » est dans la liste.', await texte('.message'));
 verifier('formulaire vidé', (await ev("document.querySelector('form input').value")) === '');
+await taper('form input', 'essai de titres');
+await cliquer('form .principal');
+await attendre(200);
+const doublon = await texte('.message');
+verifier('titre proche signalé', doublon.startsWith('Il y a déjà « Essai de titre »'), doublon);
+verifier('second clic pour ajouter quand même', (await texte('form .principal')) === 'Ajouter quand même', await texte('form .principal'));
+await taper('form input', 'essai de titres bis');
+verifier('modifier le titre réarme le bouton', (await texte('form .principal')) === 'Ajouter', await texte('form .principal'));
+await taper('form input', '');
 
 console.log('\nliste');
 await aller('#/liste');

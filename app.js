@@ -89,6 +89,32 @@ function h(balise, attributs, ...enfants) {
 const normaliser = (s) => String(s ?? '').toLowerCase().normalize('NFD')
   .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
+// Deux titres qui se ressemblent : les mêmes mots dans le désordre, ou à une
+// faute de frappe près (80 % des lettres en commun). L'article du début ne compte
+// pas ; des numéros différents (n° 1, n° 2, Dune 2…) en font deux œuvres distinctes.
+const sansArticle = (s) => normaliser(s).replace(/^(le|la|les|l|un|une|des|the|a|an|el|los|las|il|lo|gli|der|die|das) /, '');
+function distance(a, b) {
+  let avant = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const ligne = [i];
+    for (let j = 1; j <= b.length; j++) {
+      ligne[j] = Math.min(avant[j] + 1, ligne[j - 1] + 1, avant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    avant = ligne;
+  }
+  return avant[b.length];
+}
+function seRessemblent(x, y) {
+  const a = sansArticle(x), b = sansArticle(y);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if ((a.match(/\d+/g) || []).join() !== (b.match(/\d+/g) || []).join()) return false;
+  const ma = new Set(a.split(' ')), mb = new Set(b.split(' '));
+  const communs = [...ma].filter((m) => mb.has(m)).length;
+  if ((2 * communs) / (ma.size + mb.size) >= 0.8) return true;
+  return 1 - distance(a, b) / Math.max(a.length, b.length) >= 0.8;
+}
+
 const jourFr = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const dateFr = (ms) => jourFr.format(new Date(ms));
 const pluriel = (n, mot, mots = mot + 's') => `${n} ${n === 1 ? mot : mots}`;
@@ -237,6 +263,25 @@ function accueil() {
     h('div', { class: 'date' }, aujourdhui));
 }
 
+// Avant de créer une œuvre : celles du même format dont le titre ressemble. On
+// les signale, et un second clic sur le bouton crée quand même (homonymes).
+function avertirSiDoublon(titre, format, message, bouton, libelle) {
+  const cle = `${normaliser(titre)}|${format}`;
+  if (bouton.dataset.confirme === cle) return false;
+  const proches = donnees.oeuvres.filter((o) => o.format === format && seRessemblent(o.titre, titre));
+  if (proches.length === 0) return false;
+  bouton.dataset.confirme = cle;
+  bouton.textContent = `${libelle} quand même`;
+  message.classList.add('erreur');
+  message.replaceChildren(proches.length === 1 ? 'Il y a déjà ' : 'Il y a déjà : ',
+    ...proches.flatMap((o, i) => [i ? ', ' : '',
+      h('a', { href: `#/oeuvre/${o.id}` }, `« ${o.titre} »`),
+      ` (${[o.auteur, o.statut].filter(Boolean).join(', ')})`]),
+    '.');
+  return true;
+}
+const rearmer = (bouton, libelle) => { delete bouton.dataset.confirme; bouton.textContent = libelle; };
+
 function datalistLangues() {
   return h('datalist', { id: 'langues' }, languesConnues().map((l) => h('option', { value: l })));
 }
@@ -248,7 +293,9 @@ function ajouter() {
   const langue = champ('Langue', { class: 'petit', list: 'langues' }, true);
   const lien = champ('Lien', { class: 'petit', placeholder: 'https://', inputmode: 'url' }, true);
   const message = h('p', { class: 'message', role: 'status' });
-  const formats = choix(FORMATS.map((f) => [f, f]), format, (f) => { format = f; });
+  const bouton = h('button', { class: 'principal' }, 'Ajouter');
+  const formats = choix(FORMATS.map((f) => [f, f]), format, (f) => { format = f; rearmer(bouton, 'Ajouter'); });
+  titre.input.addEventListener('input', () => rearmer(bouton, 'Ajouter'));
 
   const formulaire = h('form', {
     onsubmit: async (e) => {
@@ -256,6 +303,7 @@ function ajouter() {
       message.classList.remove('erreur');
       if (!titre.input.value.trim()) return echec(new Error('Il manque le titre.'), message);
       if (!format) return echec(new Error('Choisis un format.'), message);
+      if (avertirSiDoublon(titre.input.value, format, message, bouton, 'Ajouter')) return;
       const corps = {
         titre: titre.input.value, format, auteur: auteur.input.value,
         langue: langue.input.value, lien: completerLien(lien.input.value.trim())
@@ -264,6 +312,7 @@ function ajouter() {
         const { oeuvre } = await envoyer('/oeuvres', { methode: 'POST', corps });
         message.textContent = `« ${oeuvre.titre} » est dans la liste.`;
         for (const c of [titre, auteur, langue, lien]) c.input.value = '';
+        rearmer(bouton, 'Ajouter');
         titre.input.focus();
       } catch (erreur) { echec(erreur, message); }
     }
@@ -272,7 +321,7 @@ function ajouter() {
   h('div', { class: 'champ' }, h('span', { class: 'etiquette' }, 'Format'), formats),
   h('div', { class: 'cote' }, auteur, langue),
   lien,
-  h('button', { class: 'principal' }, 'Ajouter'),
+  bouton,
   message,
   datalistLangues());
 
@@ -294,10 +343,11 @@ function entree(params) {
   const lien = champ('Lien', { class: 'petit', placeholder: 'https://', inputmode: 'url' }, true);
   const nouvelle = h('div', { class: 'champs-nouvelle', style: 'display: flex; flex-direction: column; gap: 32px' },
     h('div', { class: 'champ' }, h('span', { class: 'etiquette' }, 'Format'),
-      choix(FORMATS.map((f) => [f, f]), format, (f) => { format = f; })),
+      choix(FORMATS.map((f) => [f, f]), format, (f) => { format = f; rearmer(enregistrer, 'Enregistrer'); })),
     h('div', { class: 'cote' }, auteur, langue),
     lien);
 
+  const enregistrer = h('button', { class: 'principal' }, 'Enregistrer');
   const note = editeurNote(h('span', {}, 'Note ', h('i', {}, `— ${dateFr(Date.now())}`)));
   const message = h('p', { class: 'message', role: 'status' });
   const precision = h('span', { class: 'pale', style: 'font-size: 16px; font-style: italic' });
@@ -363,6 +413,7 @@ function entree(params) {
 
   titre.input.addEventListener('input', () => {
     if (choisie && titre.input.value !== choisie.titre) { choisie = null; majChoisie(); }
+    rearmer(enregistrer, 'Enregistrer');
     proposer();
   });
   titre.input.addEventListener('keydown', (e) => {
@@ -402,18 +453,18 @@ function entree(params) {
         if (memes.length > 1) {
           return echec(new Error('Plusieurs œuvres portent ce titre : choisis la bonne dans les suggestions.'), message);
         }
+        if (memes.length === 0 && avertirSiDoublon(saisie, format, message, enregistrer, 'Enregistrer')) return;
         corps = memes.length === 1
           ? { oeuvre: memes[0].id, texte }
           : { titre: saisie, format, auteur: auteur.input.value, langue: langue.input.value, lien: completerLien(lien.input.value.trim()), texte };
       }
 
-      const bouton = formulaire.querySelector('.principal');
-      bouton.disabled = true;
+      enregistrer.disabled = true;
       try {
         const { note: creee } = await envoyer('/notes', { methode: 'POST', corps });
         location.hash = `#/oeuvre/${creee.oeuvre}`;
       } catch (erreur) {
-        bouton.disabled = false;
+        enregistrer.disabled = false;
         echec(erreur, message);
       }
     }
@@ -421,7 +472,7 @@ function entree(params) {
   h('div', { class: 'champ', style: 'gap: 10px' }, titre, resume),
   nouvelle,
   note,
-  h('div', { class: 'actions' }, h('button', { class: 'principal' }, 'Enregistrer'), precision),
+  h('div', { class: 'actions' }, enregistrer, precision),
   message,
   datalistLangues());
 

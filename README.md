@@ -37,7 +37,8 @@ Format: Musique
 ```
 
 L'œuvre est retrouvée par titre + format (`Auteur:` départage les homonymes),
-ou créée dans l'archive ; une œuvre de la liste passe dans l'archive. Le texte
+ou créée dans l'archive (après un « ⚠︎ » si un titre du même format lui ressemble) ;
+une œuvre de la liste passe dans l'archive. Le texte
 devient une note, tel quel. Si une note du fil s'y trouve déjà en entier (une
 séance précédente pas effacée ?), rien n'est ajouté : la réponse commence par
 « ⚠︎ » et demande s'il faut continuer ; `POST /importer?continuer` ajoute quand même.

@@ -179,6 +179,31 @@ const texte = (message, statut = 200) =>
 // Pour comparer : fins de ligne unifiées, sans espaces en bout de ligne.
 const normaliser = (s) => s.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim();
 
+// Comparer des titres : comme dans app.js (normaliser, seRessemblent).
+const cleTitre = (s) => sansAccents(String(s ?? '')).replace(/[^a-z0-9]+/g, ' ').trim();
+const sansArticle = (s) => cleTitre(s).replace(/^(le|la|les|l|un|une|des|the|a|an|el|los|las|il|lo|gli|der|die|das) /, '');
+function distance(a, b) {
+  let avant = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const ligne = [i];
+    for (let j = 1; j <= b.length; j++) {
+      ligne[j] = Math.min(avant[j] + 1, ligne[j - 1] + 1, avant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    avant = ligne;
+  }
+  return avant[b.length];
+}
+function seRessemblent(x, y) {
+  const a = sansArticle(x), b = sansArticle(y);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if ((a.match(/\d+/g) || []).join() !== (b.match(/\d+/g) || []).join()) return false;
+  const ma = new Set(a.split(' ')), mb = new Set(b.split(' '));
+  const communs = [...ma].filter((m) => mb.has(m)).length;
+  if ((2 * communs) / (ma.size + mb.size) >= 0.8) return true;
+  return 1 - distance(a, b) / Math.max(a.length, b.length) >= 0.8;
+}
+
 async function importer(brut, continuer, env) {
   const lignes = normaliser(brut).split('\n');
   const champs = {};
@@ -199,14 +224,23 @@ async function importer(brut, continuer, env) {
   // L'œuvre, par titre + format ; l'auteur départage les homonymes.
   const { results } = await env.DB.prepare('select id, titre, auteur, statut from oeuvres where format = ?')
     .bind(format).all();
-  let trouvees = results.filter((o) => sansAccents(o.titre) === sansAccents(champs.titre));
+  let trouvees = results.filter((o) => cleTitre(o.titre) === cleTitre(champs.titre));
   if (trouvees.length > 1 && champs.auteur) {
-    trouvees = trouvees.filter((o) => sansAccents(o.auteur) === sansAccents(ligne(champs.auteur)));
+    trouvees = trouvees.filter((o) => cleTitre(o.auteur) === cleTitre(champs.auteur));
   }
   if (trouvees.length > 1) {
     return texte(`Plusieurs œuvres « ${champs.titre} » : ajoute une ligne « Auteur: … » pour choisir.`, 400);
   }
   const oeuvre = trouvees[0];
+
+  // Pas trouvée : avant d'en créer une, signaler celles dont le titre ressemble.
+  if (!oeuvre && !continuer) {
+    const proches = results.filter((o) => seRessemblent(o.titre, champs.titre));
+    if (proches.length) {
+      const noms = proches.map((o) => `« ${o.titre} »${o.auteur ? ` (${o.auteur})` : ''}`).join(', ');
+      return texte(`⚠︎ Aucune œuvre « ${champs.titre} », mais il y a ${noms}. Créer une nouvelle œuvre ?`);
+    }
+  }
 
   // Les puces vides (celle qu'on laisse en bas pour la suite) ne comptent pas.
   const corps = lignes.slice(i).filter((l) => !/^\s*[*+-]\s*$/.test(l)).join('\n')
