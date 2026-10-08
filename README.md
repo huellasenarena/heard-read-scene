@@ -43,6 +43,24 @@ devient une note, tel quel. Si une note du fil s'y trouve déjà en entier (une
 séance précédente pas effacée ?), rien n'est ajouté : la réponse commence par
 « ⚠︎ » et demande s'il faut continuer ; `POST /importer?continuer` ajoute quand même.
 
+Pour garder toute la note dans iA Writer (la musique : voir ses progrès), une
+ligne `Type:` en tête. `Type: Nouveau` crée une note avec tout le corps du fichier.
+`Type: Addition` n'ajoute que ce qui suit le dernier `---` (ou `* ---`) à la
+dernière note du fil, précédé d'une ligne « — 8 octobre 2026 » ; la note
+s'affiche alors « 3 octobre – 8 octobre ». Le texte avant ce `---` doit être la
+note telle qu'enregistrée, sinon « ⚠︎ » (séparateur oublié, envoi en double).
+Sans note dans le fil, Addition fait comme Nouveau.
+
+```
+Titre: Once Upon a Dream
+Format: Musique
+Type: Addition
+
+* page 1: 3:20        ← déjà envoyé
+---
+* page 1: 3:05        ← ajouté
+```
+
 Le raccourci (iPad) : feuille de partage, entrée Texte et Fichiers ;
 « Obtenir le contenu de l'URL » (POST, en-tête `X-Phrase`, corps Fichier =
 Entrée du raccourci) ; si le résultat commence par « ⚠︎ », « Afficher l'alerte »

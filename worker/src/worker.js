@@ -72,7 +72,7 @@ export default {
     }
 
     try {
-      if (ressource === 'importer' && methode === 'POST') return await importer(await requete.text(), url.searchParams.has('continuer'), env);
+      if (ressource === 'importer' && methode === 'POST') return await importer(await requete.text(), url.searchParams.has('continuer'), requete.cf?.timezone, env);
       const corps = methode === 'POST' || methode === 'PATCH' ? await requete.json() : {};
       if (ressource === 'tout' && methode === 'GET') return await tout(env);
       if (ressource === 'oeuvres' && !id && methode === 'POST') return await creerOeuvre(corps, env);
@@ -94,7 +94,7 @@ export default {
 async function tout(env) {
   const [oeuvres, notes] = await env.DB.batch([
     env.DB.prepare('select id, titre, format, auteur, langue, lien, statut, ajoute from oeuvres'),
-    env.DB.prepare('select id, oeuvre, texte, cree, modifie from notes order by cree')
+    env.DB.prepare('select id, oeuvre, texte, cree, modifie, ajout from notes order by cree')
   ]);
   return json({ oeuvres: oeuvres.results, notes: notes.results });
 }
@@ -172,7 +172,7 @@ async function supprimerNote(id, env) {
 // déjà en entier (texte d'une séance précédente pas effacé ?), rien n'est ajouté :
 // la réponse commence par « ⚠︎ » et le raccourci demande s'il faut continuer,
 // auquel cas il renvoie avec `?continuer`. Réponse en texte simple, pour le raccourci.
-const CLES = { titre: 'titre', format: 'format', auteur: 'auteur', langue: 'langue', lien: 'lien' };
+const CLES = { titre: 'titre', format: 'format', auteur: 'auteur', langue: 'langue', lien: 'lien', type: 'type' };
 const sansAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const texte = (message, statut = 200) =>
   new Response(message, { status: statut, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...ENTETES } });
@@ -204,7 +204,22 @@ function seRessemblent(x, y) {
   return 1 - distance(a, b) / Math.max(a.length, b.length) >= 0.8;
 }
 
-async function importer(brut, continuer, env) {
+// « --- » sépare les séances dans le fichier (aussi « * --- », quand iA Writer
+// continue la liste). Dans la note, chaque ajout commence par « — 8 octobre 2026 ».
+const SEPARATEUR = /^\s*(?:[*+-]\s*)?-{3,}\s*$/;
+const DATE_AJOUT = /^— \d{1,2} \p{L}+ \d{4}$/u;
+const puceVide = (l) => /^\s*[*+-]\s*$/.test(l);
+// Les puces vides (celle qu'on laisse en bas pour la suite) ne comptent pas.
+const nettoyer = (lignes) => lignes.filter((l) => !puceVide(l)).join('\n')
+  .replace(/\n{3,}/g, '\n\n').trim().slice(0, 50000);
+// Pour comparer le haut du fichier à la note : sans séparateurs, dates ni blancs.
+const empreinte = (s) => normaliser(s).split('\n')
+  .filter((l) => !SEPARATEUR.test(l) && !DATE_AJOUT.test(l.trim()) && !puceVide(l))
+  .join('').replace(/\s+/g, '');
+const jourFr = (ms, fuseau) => new Date(ms).toLocaleDateString('fr-FR',
+  { day: 'numeric', month: 'long', year: 'numeric', timeZone: fuseau || 'Europe/Paris' });
+
+async function importer(brut, continuer, fuseau, env) {
   const lignes = normaliser(brut).split('\n');
   const champs = {};
   let i = 0;
@@ -220,6 +235,10 @@ async function importer(brut, continuer, env) {
   if (!format) return texte('Il manque la ligne « Format: » (Vidéo, Texte ou Musique).', 400);
   champs.titre = ligne(champs.titre);
   champs.format = format;
+  const type = sansAccents(champs.type || '').trim();
+  if (type && type !== 'addition' && type !== 'nouveau') {
+    return texte('La ligne « Type: » vaut Addition ou Nouveau.', 400);
+  }
 
   // L'œuvre, par titre + format ; l'auteur départage les homonymes.
   const { results } = await env.DB.prepare('select id, titre, auteur, statut from oeuvres where format = ?')
@@ -242,9 +261,15 @@ async function importer(brut, continuer, env) {
     }
   }
 
-  // Les puces vides (celle qu'on laisse en bas pour la suite) ne comptent pas.
-  const corps = lignes.slice(i).filter((l) => !/^\s*[*+-]\s*$/.test(l)).join('\n')
-    .replace(/\n{3,}/g, '\n\n').trim().slice(0, 50000);
+  // « Type: Addition » : le fichier garde toute la note ; seul ce qui suit le
+  // dernier « --- » s'ajoute à la dernière note du fil. Sans note, comme Nouveau.
+  if (type === 'addition' && oeuvre) {
+    const { results: [derniere] } = await env.DB.prepare(
+      'select id, texte, cree from notes where oeuvre = ? order by cree desc limit 1').bind(oeuvre.id).all();
+    if (derniere) return await ajouter(oeuvre, derniere, lignes.slice(i), continuer, fuseau, env);
+  }
+
+  const corps = nettoyer(lignes.slice(i));
   // Rien que des blancs ou de la ponctuation : rien à ajouter.
   if (!/[\p{L}\p{N}]/u.test(corps)) return texte(`${oeuvre?.titre || champs.titre} : rien à ajouter.`);
 
@@ -253,7 +278,7 @@ async function importer(brut, continuer, env) {
       .bind(oeuvre.id).all();
     const deja = notes.find((n) => normaliser(n.texte) && corps.includes(normaliser(n.texte)));
     if (deja) {
-      const jour = new Date(deja.cree).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+      const jour = jourFr(deja.cree, fuseau);
       const debut = ligne(deja.texte, 60);
       return texte(`⚠︎ Il paraît que ce texte contient déjà la note du ${jour} (« ${debut}${debut.length < ligne(deja.texte).length ? '…' : ''} »). Continuer ?`);
     }
@@ -277,4 +302,25 @@ async function importer(brut, continuer, env) {
 
   const ou = !oeuvre ? ' (nouvelle œuvre dans l’archive)' : oeuvre.statut === 'liste' ? ' (passée dans l’archive)' : '';
   return texte(`✓ ${oeuvre?.titre || champs.titre} : note ajoutée${ou}.`, 201);
+}
+
+async function ajouter(oeuvre, note, lignes, continuer, fuseau, env) {
+  const k = lignes.findLastIndex((l) => SEPARATEUR.test(l));
+  if (k < 0) return texte(`${oeuvre.titre} : il manque une ligne « --- » avant les nouvelles lignes.`, 400);
+  const nouveau = nettoyer(lignes.slice(k + 1));
+  if (!/[\p{L}\p{N}]/u.test(nouveau)) return texte(`${oeuvre.titre} : rien à ajouter après le dernier « --- ».`);
+
+  // Le haut du fichier doit être la note telle qu'elle est déjà enregistrée.
+  const jour = jourFr(note.cree, fuseau);
+  const avant = lignes.slice(0, k).join('\n');
+  if (!continuer && empreinte(avant) !== empreinte(note.texte)) {
+    return texte(empreinte(avant + nouveau) === empreinte(note.texte)
+      ? `⚠︎ Les lignes après le dernier « --- » sont déjà dans la note du ${jour}. Les ajouter encore ?`
+      : `⚠︎ Le texte avant le dernier « --- » ne correspond pas à la note du ${jour} (un « --- » oublié ?). Ajouter quand même ?`);
+  }
+
+  const maintenant = Date.now();
+  await env.DB.prepare('update notes set texte = ?, ajout = ? where id = ?')
+    .bind(`${note.texte}\n\n— ${jourFr(maintenant, fuseau)}\n\n${nouveau}`, maintenant, note.id).run();
+  return texte(`✓ ${oeuvre.titre} : ajouté à la note du ${jour}.`, 201);
 }

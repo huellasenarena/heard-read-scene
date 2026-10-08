@@ -117,6 +117,8 @@ function seRessemblent(x, y) {
 
 const jourFr = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const dateFr = (ms) => jourFr.format(new Date(ms));
+// Une note prolongée par import (« Type: Addition ») : « 3 octobre – 8 octobre ».
+const datesNote = (n) => (n.ajout && dateFr(n.ajout) !== dateFr(n.cree) ? `${dateFr(n.cree)} – ${dateFr(n.ajout)}` : dateFr(n.cree));
 const pluriel = (n, mot, mots = mot + 's') => `${n} ${n === 1 ? mot : mots}`;
 
 const echapper = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -491,7 +493,7 @@ const filtres = {
 function collection(statut) {
   const etat = filtres[statut];
   const index = notesParOeuvre();
-  const derniere = (o) => Math.max(o.ajoute, ...(index.get(o.id) || []).map((n) => n.cree));
+  const derniere = (o) => Math.max(o.ajoute, ...(index.get(o.id) || []).map((n) => n.ajout || n.cree));
 
   const toutes = donnees.oeuvres.filter((o) => o.statut === statut);
   if (statut === 'liste') toutes.sort((a, b) => b.ajoute - a.ajoute);
@@ -599,12 +601,12 @@ function vueOeuvre(id) {
     function lecture() {
       article.replaceChildren(
         h('div', { class: 'tete-note' },
-          h('span', { class: 'etiquette' }, dateFr(n.cree)),
+          h('span', { class: 'etiquette' }, datesNote(n)),
           h('button', { type: 'button', class: 'discret', onclick: edition }, 'modifier')),
         h('p', { class: 'texte', html: enrichir(n.texte) }));
     }
     function edition() {
-      const editeur = editeurNote(dateFr(n.cree), n.texte);
+      const editeur = editeurNote(datesNote(n), n.texte);
       const erreur = h('p', { class: 'message', role: 'status' });
       article.replaceChildren(h('form', {
         onsubmit: async (e) => {

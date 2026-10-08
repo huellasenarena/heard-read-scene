@@ -36,6 +36,11 @@ utilisateur, sur iPad et Mac. Le but : **simple, minimaliste, direct.**
   déjà en entier (oubli d'effacer), on **ne retire rien** : réponse « ⚠︎ … Continuer ? »
   (ne pas mélanger les séances), le raccourci renvoie alors avec `?continuer`. Même « ⚠︎ »
   si le titre ressemble à une autre œuvre. Réponses en texte simple, pour le raccourci.
+- **Import `Type: Addition` / `Nouveau`** (pensé pour la musique, accepté partout) :
+  l'utilisateur garde alors toute la note dans iA Writer. Addition ajoute ce qui suit
+  le dernier `---` à la dernière note, avec une ligne « — date » ; colonne `notes.ajout`
+  (≠ `modifie`, qui bouge aussi aux corrections) → en-tête « création – dernier ajout ».
+  Le haut du fichier doit correspondre à la note, sinon « ⚠︎ … ? ».
 - **Italique** : `*comme ça*`, avec le bouton *I* ou ⌘I. C'est le seul enrichissement.
 - **Modifier** passe toujours par un bouton (« modifier »), jamais par un tap sur
   le texte, pour qu'on puisse le sélectionner. Toute suppression demande deux clics.
