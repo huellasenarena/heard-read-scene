@@ -708,10 +708,12 @@ function afficher() {
 }
 
 // Après un rechargement venu d'ailleurs (l'autre appareil), on redessine,
-// sauf si l'on est en train d'écrire.
+// sauf si l'on est en train d'écrire : champ actif, ou déjà rempli (au retour
+// d'un autre onglet, le navigateur a souvent retiré le focus).
 function rafraichir() {
   const actif = document.activeElement;
   if (actif && ['INPUT', 'TEXTAREA'].includes(actif.tagName)) return;
+  if ([...document.querySelectorAll('#app input, #app textarea')].some(champ => champ.value.trim())) return;
   afficher();
 }
 
