@@ -46,9 +46,9 @@ séance précédente pas effacée ?), rien n'est ajouté : la réponse commence 
 Pour garder toute la note dans iA Writer (la musique : voir ses progrès), une
 ligne `Type:` en tête. `Type: Nouveau` crée une note avec tout le corps du fichier.
 `Type: Addition` n'ajoute que ce qui suit le dernier `---` (ou `* ---`) à la
-dernière note du fil, précédé d'une ligne « — 8 octobre 2026 » ; la note
-s'affiche alors « 3 octobre – 8 octobre ». Le texte avant ce `---` doit être la
-note telle qu'enregistrée, sinon « ⚠︎ » (séparateur oublié, envoi en double).
+dernière note du fil, précédé d'une ligne « — 8 octobre » (la séance d'origine
+reçoit aussi la sienne) ; la note s'affiche alors « 3 octobre – 8 octobre 2026 ».
+Le texte avant ce `---` doit être la note telle qu'enregistrée, sinon « ⚠︎ » (séparateur oublié, envoi en double).
 Sans note dans le fil, Addition fait comme Nouveau.
 
 ```

@@ -205,9 +205,9 @@ function seRessemblent(x, y) {
 }
 
 // « --- » sépare les séances dans le fichier (aussi « * --- », quand iA Writer
-// continue la liste). Dans la note, chaque ajout commence par « — 8 octobre 2026 ».
+// continue la liste). Dans la note, chaque séance commence par « — 8 octobre ».
 const SEPARATEUR = /^\s*(?:[*+-]\s*)?-{3,}\s*$/;
-const DATE_AJOUT = /^— \d{1,2} \p{L}+ \d{4}$/u;
+const DATE_AJOUT = /^— \d{1,2} \p{L}+( \d{4})?$/u;
 const puceVide = (l) => /^\s*[*+-]\s*$/.test(l);
 // Les puces vides (celle qu'on laisse en bas pour la suite) ne comptent pas.
 const nettoyer = (lignes) => lignes.filter((l) => !puceVide(l)).join('\n')
@@ -216,8 +216,11 @@ const nettoyer = (lignes) => lignes.filter((l) => !puceVide(l)).join('\n')
 const empreinte = (s) => normaliser(s).split('\n')
   .filter((l) => !SEPARATEUR.test(l) && !DATE_AJOUT.test(l.trim()) && !puceVide(l))
   .join('').replace(/\s+/g, '');
-const jourFr = (ms, fuseau) => new Date(ms).toLocaleDateString('fr-FR',
-  { day: 'numeric', month: 'long', year: 'numeric', timeZone: fuseau || 'Europe/Paris' });
+const jourFr = (ms, fuseau, annee = true) => new Date(ms).toLocaleDateString('fr-FR',
+  { day: 'numeric', month: 'long', year: annee ? 'numeric' : undefined, timeZone: fuseau || 'Europe/Paris' });
+// « — 8 octobre » ; l'année seulement si elle diffère de celle de la note.
+const ligneDate = (ms, cree, fuseau) => `— ${jourFr(ms, fuseau,
+  new Date(ms).getFullYear() !== new Date(cree).getFullYear())}`;
 
 async function importer(brut, continuer, fuseau, env) {
   const lignes = normaliser(brut).split('\n');
@@ -320,7 +323,10 @@ async function ajouter(oeuvre, note, lignes, continuer, fuseau, env) {
   }
 
   const maintenant = Date.now();
+  // Au premier ajout, la séance d'origine reçoit elle aussi sa ligne de date.
+  const debut = DATE_AJOUT.test(note.texte.split('\n')[0].trim()) ? note.texte
+    : `${ligneDate(note.cree, note.cree, fuseau)}\n\n${note.texte}`;
   await env.DB.prepare('update notes set texte = ?, ajout = ? where id = ?')
-    .bind(`${note.texte}\n\n— ${jourFr(maintenant, fuseau)}\n\n${nouveau}`, maintenant, note.id).run();
+    .bind(`${debut}\n\n${ligneDate(maintenant, note.cree, fuseau)}\n\n${nouveau}`, maintenant, note.id).run();
   return texte(`✓ ${oeuvre.titre} : ajouté à la note du ${jour}.`, 201);
 }

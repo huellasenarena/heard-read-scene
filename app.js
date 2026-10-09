@@ -117,8 +117,13 @@ function seRessemblent(x, y) {
 
 const jourFr = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 const dateFr = (ms) => jourFr.format(new Date(ms));
-// Une note prolongée par import (« Type: Addition ») : « 3 octobre – 8 octobre ».
-const datesNote = (n) => (n.ajout && dateFr(n.ajout) !== dateFr(n.cree) ? `${dateFr(n.cree)} – ${dateFr(n.ajout)}` : dateFr(n.cree));
+const jourMois = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' });
+// Une note prolongée par import (« Type: Addition ») : « 3 octobre – 8 octobre 2026 ».
+function datesNote(n) {
+  if (!n.ajout || dateFr(n.ajout) === dateFr(n.cree)) return dateFr(n.cree);
+  const memeAnnee = new Date(n.ajout).getFullYear() === new Date(n.cree).getFullYear();
+  return `${memeAnnee ? jourMois.format(new Date(n.cree)) : dateFr(n.cree)} – ${dateFr(n.ajout)}`;
+}
 const pluriel = (n, mot, mots = mot + 's') => `${n} ${n === 1 ? mot : mots}`;
 
 const echapper = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
