@@ -138,6 +138,35 @@ await taper('.recherche', 'essai de');
 await attendre(100);
 verifier('recherche', (await ev("document.querySelectorAll('.oeuvres .t').length")) === 1);
 
+console.log('\ntirage : il reste, et le × supprime');
+await fetch('http://localhost:8787/oeuvres', {
+  method: 'POST', headers: { 'X-Phrase': 'essai-local', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ titre: 'Zzyzx tirage', format: 'texte' })
+});
+await taper('.recherche', '');
+await ev("document.activeElement.blur(); document.dispatchEvent(new Event('visibilitychange'))");
+await attendre(500);
+await taper('.recherche', 'zzyzx');
+await cliquer('.barre .secondaire');
+await attendre(100);
+verifier('tirage de la seule œuvre', (await texte('.tirage .t')) === 'Zzyzx tirage', await texte('.tirage .t'));
+await cliquer('.tirage .t');
+await attendre(300);
+await aller('#/liste');
+verifier("le tirage est encore là au retour de l'œuvre", (await texte('.tirage .t')) === 'Zzyzx tirage', await texte('.tirage .t'));
+await ev("document.activeElement.blur(); document.querySelector('.recherche').value = ''");
+await ev("document.dispatchEvent(new Event('visibilitychange'))");
+await attendre(500);
+verifier("le tirage est encore là au retour d'un autre onglet", (await texte('.tirage .t')) === 'Zzyzx tirage', await texte('.tirage .t'));
+await cliquer('.tirage .fermer');
+verifier('le × demande confirmation', (await texte('.tirage .fermer')) === 'supprimer de la liste', await texte('.tirage .fermer'));
+await capture('02b-tirage-supprimer.png');
+await cliquer('.tirage .fermer');
+await attendre(800);
+verifier('œuvre supprimée, tirage retiré', !(await texte('.tirage')) &&
+  !(await ev("[...document.querySelectorAll('.oeuvres .t')].some((t) => t.textContent === 'Zzyzx tirage')")));
+await taper('.recherche', '');
+
 console.log('\ncréer une entrée depuis la liste');
 await aller('#/entree');
 await taper('input[role=combobox]', 'essai');

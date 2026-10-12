@@ -186,7 +186,8 @@ function boutonSupprimer(libelle, confirmation, action) {
     if (arme) return action();
     arme = true;
     bouton.textContent = confirmation;
-    setTimeout(() => { arme = false; bouton.textContent = libelle; }, 4000);
+    bouton.dataset.arme = '';
+    setTimeout(() => { arme = false; bouton.textContent = libelle; delete bouton.dataset.arme; }, 4000);
   });
   return bouton;
 }
@@ -489,11 +490,13 @@ function entree(params) {
   return vue;
 }
 
-// Les filtres de la liste et de l'archive restent tels quels d'un écran à l'autre.
+// Les filtres de la liste et de l'archive restent tels quels d'un écran à l'autre,
+// comme l'œuvre tirée au hasard (son id), qui ne disparaît pas au retour.
 const filtres = {
   liste: { format: '', langue: '', q: '' },
   archive: { format: '', langue: '', q: '' }
 };
+let tiree = null;
 
 function collection(statut) {
   const etat = filtres[statut];
@@ -554,24 +557,37 @@ function collection(statut) {
     }
   }
 
-  function majTout() { dessinerFiltres(); dessinerResultats(); tirage.replaceChildren(); }
+  function majTout() { dessinerFiltres(); dessinerResultats(); tiree = null; tirage.replaceChildren(); }
 
-  let tiree = null;
   function tirer() {
-    const candidates = filtrees().filter((o) => o !== tiree || filtrees().length === 1);
+    const candidates = filtrees().filter((o) => o.id !== tiree || filtrees().length === 1);
     if (candidates.length === 0) {
       tirage.replaceChildren(h('p', { class: 'vide' }, 'Rien à tirer avec ces filtres.'));
       return;
     }
-    tiree = candidates[Math.floor(Math.random() * candidates.length)];
+    dessinerTirage(candidates[Math.floor(Math.random() * candidates.length)]);
+  }
+
+  function dessinerTirage(o) {
+    tiree = o.id;
+    const message = h('p', { class: 'message', role: 'status' });
+    const supprimer = boutonSupprimer('×', 'supprimer de la liste', async () => {
+      try {
+        await envoyer(`/oeuvres/${o.id}`, { methode: 'DELETE' });
+        tiree = null;
+        afficher();
+      } catch (err) { tirage.firstChild.append(message); echec(err, message); }
+    });
+    supprimer.classList.add('fermer');
+    supprimer.setAttribute('aria-label', 'Supprimer de la liste');
     tirage.replaceChildren(h('section', { class: 'tirage', 'aria-label': 'Tirage au hasard' },
-      h('div', { class: 'etiquette' }, 'au hasard'),
-      h('a', { class: 't', href: `#/oeuvre/${tiree.id}` }, tiree.titre),
-      h('div', { class: 'meta' }, descriptif(tiree),
-        estUnLien(tiree.lien) && [' · ', h('a', { href: tiree.lien, target: '_blank', rel: 'noopener' }, `${domaine(tiree.lien)} ↗`)]),
+      h('div', { class: 'tete-tirage' }, h('span', { class: 'etiquette' }, 'au hasard'), supprimer),
+      h('a', { class: 't', href: `#/oeuvre/${o.id}` }, o.titre),
+      h('div', { class: 'meta' }, descriptif(o),
+        estUnLien(o.lien) && [' · ', h('a', { href: o.lien, target: '_blank', rel: 'noopener' }, `${domaine(o.lien)} ↗`)]),
       h('div', { class: 'actions' },
         h('button', { type: 'button', class: 'discret', style: 'text-decoration: underline; color: var(--encre)', onclick: tirer }, 'autre'),
-        h('a', { class: 'lien-rouge', href: `#/entree?oeuvre=${tiree.id}` }, 'écrire une entrée →'))));
+        h('a', { class: 'lien-rouge', href: `#/entree?oeuvre=${o.id}` }, 'écrire une entrée →'))));
   }
 
   const recherche = h('input', {
@@ -579,7 +595,11 @@ function collection(statut) {
     oninput: (e) => { etat.q = e.target.value; dessinerFiltres(); dessinerResultats(); }
   });
 
-  majTout();
+  dessinerFiltres();
+  dessinerResultats();
+  // Au retour sur la liste, l'œuvre tirée revient, si elle y est encore.
+  const encore = statut === 'liste' && filtrees().find((o) => o.id === tiree);
+  if (encore) dessinerTirage(encore);
   return h('div', {},
     retour(),
     h('div', { class: 'barre' },
