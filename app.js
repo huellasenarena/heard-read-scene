@@ -550,7 +550,8 @@ function collection(statut) {
     const resultat = filtrees();
     compte.textContent = pluriel(resultat.length, 'œuvre');
     liste.replaceChildren(...resultat.map((o) => h('li', {},
-      h('a', { href: `#/oeuvre/${o.id}` }, h('span', { class: 't' }, o.titre), h('span', { class: 'm' }, meta(o))))));
+      h('a', { href: `#/oeuvre/${o.id}` }, h('span', { class: 't' }, o.titre), h('span', { class: 'm' }, meta(o))),
+      statut === 'liste' && croix(o, compte))));
     if (resultat.length === 0) {
       liste.replaceChildren(h('li', { class: 'vide', style: 'border: none' },
         statut === 'liste' ? 'Rien dans la liste avec ces filtres.' : 'Aucune entrée avec ces filtres.'));
@@ -568,18 +569,24 @@ function collection(statut) {
     dessinerTirage(candidates[Math.floor(Math.random() * candidates.length)]);
   }
 
+  // Le × des œuvres de la liste (lignes et tirage) : deux appuis pour supprimer.
+  function croix(o, message, avantEchec) {
+    const bouton = boutonSupprimer('×', 'supprimer de la liste', async () => {
+      try {
+        await envoyer(`/oeuvres/${o.id}`, { methode: 'DELETE' });
+        if (tiree === o.id) tiree = null;
+        afficher();
+      } catch (err) { avantEchec?.(); echec(err, message); }
+    });
+    bouton.classList.add('fermer');
+    bouton.setAttribute('aria-label', `Supprimer « ${o.titre} » de la liste`);
+    return bouton;
+  }
+
   function dessinerTirage(o) {
     tiree = o.id;
     const message = h('p', { class: 'message', role: 'status' });
-    const supprimer = boutonSupprimer('×', 'supprimer de la liste', async () => {
-      try {
-        await envoyer(`/oeuvres/${o.id}`, { methode: 'DELETE' });
-        tiree = null;
-        afficher();
-      } catch (err) { tirage.firstChild.append(message); echec(err, message); }
-    });
-    supprimer.classList.add('fermer');
-    supprimer.setAttribute('aria-label', 'Supprimer de la liste');
+    const supprimer = croix(o, message, () => tirage.firstChild.append(message));
     tirage.replaceChildren(h('section', { class: 'tirage', 'aria-label': 'Tirage au hasard' },
       h('div', { class: 'tete-tirage' }, h('span', { class: 'etiquette' }, 'au hasard'), supprimer),
       h('a', { class: 't', href: `#/oeuvre/${o.id}` }, o.titre),

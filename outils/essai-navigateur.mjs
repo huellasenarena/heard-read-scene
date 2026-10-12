@@ -165,6 +165,21 @@ await cliquer('.tirage .fermer');
 await attendre(800);
 verifier('œuvre supprimée, tirage retiré', !(await texte('.tirage')) &&
   !(await ev("[...document.querySelectorAll('.oeuvres .t')].some((t) => t.textContent === 'Zzyzx tirage')")));
+await fetch('http://localhost:8787/oeuvres', {
+  method: 'POST', headers: { 'X-Phrase': 'essai-local', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ titre: 'Zzyzx ligne', format: 'texte' })
+});
+await taper('.recherche', '');
+await ev("document.activeElement.blur(); document.dispatchEvent(new Event('visibilitychange'))");
+await attendre(500);
+await taper('.recherche', 'zzyzx');
+verifier('un × sur chaque ligne de la liste', (await ev("document.querySelectorAll('.oeuvres li .fermer').length")) === 1);
+await cliquer('.oeuvres .fermer');
+verifier('le × de la ligne demande confirmation', (await texte('.oeuvres .fermer')) === 'supprimer de la liste');
+await capture('02c-ligne-supprimer.png');
+await cliquer('.oeuvres .fermer');
+await attendre(800);
+verifier('la ligne est supprimée', (await ev("document.querySelectorAll('.oeuvres .fermer').length")) === 0);
 await taper('.recherche', '');
 
 console.log('\ncréer une entrée depuis la liste');
