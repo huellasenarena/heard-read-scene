@@ -157,6 +157,7 @@ textarea:focus { border-color: var(--encre); }
 .tete-tirage { display: flex; justify-content: space-between; align-items: center; margin-top: -12px; }
 .fermer { font-size: 28px; font-style: normal; color: var(--encre-pale); min-width: 44px; text-align: right; }
 .fermer[data-arme] { font-size: 16px; font-style: italic; color: var(--rouge); }
+.coche { font-size: 20px; }   /* le ✓ vient d’une autre police, plus grasse */
 
 /* Une œuvre */
 .notes { margin-top: 36px; }

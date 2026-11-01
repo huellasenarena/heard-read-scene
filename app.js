@@ -178,9 +178,10 @@ function champ(libelle, attributs, facultatif) {
   return bloc;
 }
 
-// Deux temps pour tout ce qui supprime : le premier clic arme, le second agit.
-function boutonSupprimer(libelle, confirmation, action) {
-  const bouton = h('button', { type: 'button', class: 'discret danger' }, libelle);
+// Deux temps pour tout ce qui supprime (et pour archiver depuis la liste) : le
+// premier clic arme, le second agit.
+function boutonDeuxTemps(libelle, confirmation, action) {
+  const bouton = h('button', { type: 'button', class: 'discret' }, libelle);
   let arme = false;
   bouton.addEventListener('click', () => {
     if (arme) return action();
@@ -189,6 +190,11 @@ function boutonSupprimer(libelle, confirmation, action) {
     bouton.dataset.arme = '';
     setTimeout(() => { arme = false; bouton.textContent = libelle; delete bouton.dataset.arme; }, 4000);
   });
+  return bouton;
+}
+function boutonSupprimer(libelle, confirmation, action) {
+  const bouton = boutonDeuxTemps(libelle, confirmation, action);
+  bouton.classList.add('danger');
   return bouton;
 }
 
@@ -564,7 +570,7 @@ function collection(statut) {
     compte.textContent = pluriel(resultat.length, 'œuvre');
     liste.replaceChildren(...resultat.map((o) => h('li', {},
       h('a', { href: `#/oeuvre/${o.id}` }, h('span', { class: 't' }, o.titre), h('span', { class: 'm' }, meta(o))),
-      statut === 'liste' && croix(o, compte))));
+      statut === 'liste' && boutonsLigne(o, compte))));
     if (resultat.length === 0) {
       liste.replaceChildren(h('li', { class: 'vide', style: 'border: none' },
         statut === 'liste' ? 'Rien dans la liste avec ces filtres.' : 'Aucune entrée avec ces filtres.'));
@@ -582,26 +588,35 @@ function collection(statut) {
     dessinerTirage(candidates[Math.floor(Math.random() * candidates.length)]);
   }
 
-  // Le × des œuvres de la liste (lignes et tirage) : deux appuis pour supprimer.
-  function croix(o, message, avantEchec) {
-    const bouton = boutonSupprimer('×', 'supprimer de la liste', async () => {
-      try {
-        await envoyer(`/oeuvres/${o.id}`, { methode: 'DELETE' });
-        if (tiree === o.id) tiree = null;
-        afficher();
-      } catch (err) { avantEchec?.(); echec(err, message); }
-    });
-    bouton.classList.add('fermer');
-    bouton.setAttribute('aria-label', `Supprimer « ${o.titre} » de la liste`);
-    return bouton;
+  // Les boutons des œuvres de la liste (lignes et tirage), en deux appuis :
+  // ✓ archive sans note, × supprime.
+  function boutonsLigne(o, message, avantEchec) {
+    const bouton = (fabrique, libelle, confirmation, classe, etiquette, options) => {
+      const b = fabrique(libelle, confirmation, async () => {
+        try {
+          await envoyer(`/oeuvres/${o.id}`, options);
+          if (tiree === o.id) tiree = null;
+          afficher();
+        } catch (err) { avantEchec?.(); echec(err, message); }
+      });
+      b.classList.add('fermer', classe);
+      b.setAttribute('aria-label', etiquette);
+      return b;
+    };
+    return [
+      bouton(boutonDeuxTemps, '✓', 'archiver', 'coche', `Archiver « ${o.titre} » sans note`,
+        { methode: 'PATCH', corps: { statut: 'archive' } }),
+      bouton(boutonSupprimer, '×', 'supprimer de la liste', 'croix', `Supprimer « ${o.titre} » de la liste`,
+        { methode: 'DELETE' })];
   }
 
   function dessinerTirage(o) {
     tiree = o.id;
     const message = h('p', { class: 'message', role: 'status' });
-    const supprimer = croix(o, message, () => tirage.firstChild.append(message));
+    const boutons = boutonsLigne(o, message, () => tirage.firstChild.append(message));
     tirage.replaceChildren(h('section', { class: 'tirage', 'aria-label': 'Tirage au hasard' },
-      h('div', { class: 'tete-tirage' }, h('span', { class: 'etiquette' }, 'au hasard'), supprimer),
+      h('div', { class: 'tete-tirage' }, h('span', { class: 'etiquette' }, 'au hasard'),
+        h('div', { style: 'display: flex; align-items: center; gap: 16px' }, boutons)),
       h('a', { class: 't', href: `#/oeuvre/${o.id}` }, o.titre),
       h('div', { class: 'meta' }, descriptif(o),
         estUnLien(o.lien) && [' · ', h('a', { href: o.lien, target: '_blank', rel: 'noopener' }, `${domaine(o.lien)} ↗`)]),
