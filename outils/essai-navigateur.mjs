@@ -251,6 +251,59 @@ verifier("retour à l'archive", (await ev('location.hash')) === '#/archive');
 await aller('#/');
 verifier('compte revenu à son état initial', (await ev("document.querySelectorAll('.accueil nav a span')[0].textContent")) === avant);
 
+console.log('\narchiver sans note');
+const { oeuvre: zz } = await (await fetch('http://localhost:8787/oeuvres', {
+  method: 'POST', headers: { 'X-Phrase': 'essai-local', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ titre: 'Zzyzx archiver', format: 'texte' })
+})).json();
+await ev("document.dispatchEvent(new Event('visibilitychange'))");
+await attendre(500);
+await aller(`#/oeuvre/${zz.id}`);
+await cliquerTexte('button', 'archiver sans note');
+await attendre(900);
+verifier("l'œuvre est passée dans l'archive", (await texte('.retour')) === '← archive', await texte('.retour'));
+verifier('« archivée le …, sans note »', /^Archivée le .+, sans note\.$/.test(await texte('.notes .vide')), await texte('.notes .vide'));
+await capture('07-archivee-sans-note.png');
+await aller('#/archive');
+await taper('.recherche', '');
+verifier("en tête de l'archive, « sans note »", (await texte('.oeuvres .t')) === 'Zzyzx archiver' &&
+  (await texte('.oeuvres .m')).startsWith('texte · sans note · '), await texte('.oeuvres .m'));
+await aller(`#/oeuvre/${zz.id}`);
+await cliquerTexte('button', 'remettre dans la liste');
+await attendre(900);
+verifier('remise dans la liste', (await texte('.retour')) === '← liste', await texte('.retour'));
+
+await aller('#/entree');
+await taper('input[role=combobox]', 'zzyzx arch');
+await attendre(100);
+await cliquer('.suggestions button');
+await attendre(100);
+verifier('note vide annoncée', (await texte('.actions .pale')) === "sans note : passera dans l'archive", await texte('.actions .pale'));
+await cliquer('form .principal');
+await attendre(900);
+verifier('entrée sans note → archive', (await texte('.retour')) === '← archive' && (await ev("document.querySelectorAll('.note').length")) === 0);
+await aller(`#/entree?oeuvre=${zz.id}`);
+await cliquer('form .principal');
+await attendre(200);
+verifier('note vide refusée sur une œuvre déjà archivée', (await texte('.message')) === 'La note est vide.', await texte('.message'));
+
+await aller('#/entree');
+await taper('input[role=combobox]', 'Zzyzx jamais listée');
+await ev("document.activeElement.blur()");
+await cliquerTexte('.choix button', 'vidéo');
+await cliquer('form .principal');
+await attendre(900);
+const nouvelleId = (await ev('location.hash')).slice('#/oeuvre/'.length);
+verifier('nouvelle œuvre créée directement dans l\'archive, sans note', (await texte('.retour')) === '← archive' &&
+  /^Archivée le/.test(await texte('.notes .vide')), await texte('.notes .vide'));
+for (const id of [zz.id, nouvelleId]) {
+  await fetch(`http://localhost:8787/oeuvres/${id}`, { method: 'DELETE', headers: { 'X-Phrase': 'essai-local' } });
+}
+await ev("document.dispatchEvent(new Event('visibilitychange'))");
+await attendre(500);
+await aller('#/');
+verifier('compte de la liste inchangé', (await ev("document.querySelectorAll('.accueil nav a span')[0].textContent")) === avant);
+
 verifier('aucune erreur JavaScript', erreurs.length === 0, erreurs.join(' | '));
 console.log(echecs ? `\n${echecs} échec(s)` : '\ntout est bon');
 process.exit(echecs ? 1 : 0);

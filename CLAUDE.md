@@ -22,6 +22,10 @@ utilisateur, sur iPad et Mac. Le but : **simple, minimaliste, direct.**
   Si l'œuvre a déjà une entrée, la note s'ajoute à son fil. Une œuvre est identifiée
   par titre + format ; les homonymes se distinguent dans l'autocomplétion (auteur,
   langue, lien).
+- **Archiver sans note** : bouton sur la page d'une œuvre de la liste, ou entrée à la
+  note vide (aussi pour une œuvre nouvelle). Colonne `oeuvres.archivee` (date), qui
+  tient lieu de dernière note pour trier l'archive ; « remettre dans la liste » tant
+  qu'il n'y a pas de note.
 - **Langue** : langue originale pour les films (`muet`, `sans dialogue` existent aussi),
   langue de l'édition pour les livres. Filtre par langue dans Liste et Archive,
   affiché seulement s'il y a au moins deux langues à choisir.

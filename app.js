@@ -368,7 +368,7 @@ function entree(params) {
     nouvelle.hidden = !!choisie;
     nouvelle.style.display = choisie ? 'none' : 'flex';
     resume.replaceChildren();
-    precision.textContent = '';
+    majPrecision();
     if (!choisie) return;
     resume.append(
       h('span', {}, [descriptif(choisie), statut(choisie)].filter(Boolean).join(' · ')),
@@ -376,8 +376,15 @@ function entree(params) {
         type: 'button', class: 'discret',
         onclick: () => { choisie = null; titre.input.value = ''; majChoisie(); titre.input.focus(); }
       }, 'changer'));
-    precision.textContent = choisie.statut === 'liste' ? 'quittera la liste' : "s'ajoutera à son fil";
   }
+  // Une note vide est permise : l'œuvre passe alors dans l'archive sans note.
+  function majPrecision() {
+    const vide = !note.zone.value.trim();
+    precision.textContent = choisie?.statut === 'archive' ? "s'ajoutera à son fil"
+      : !vide ? (choisie ? 'quittera la liste' : '')
+      : choisie || titre.input.value.trim() ? "sans note : passera dans l'archive" : '';
+  }
+  note.zone.addEventListener('input', majPrecision);
 
   // Autocomplétion sur la liste et l'archive : ce qui commence par la saisie
   // d'abord, puis ce qui la contient.
@@ -422,6 +429,7 @@ function entree(params) {
   titre.input.addEventListener('input', () => {
     if (choisie && titre.input.value !== choisie.titre) { choisie = null; majChoisie(); }
     rearmer(enregistrer, 'Enregistrer');
+    majPrecision();
     proposer();
   });
   titre.input.addEventListener('keydown', (e) => {
@@ -448,12 +456,9 @@ function entree(params) {
       const texte = note.zone.value.trim();
       const saisie = titre.input.value.trim();
       if (!saisie) return echec(new Error('Il manque le titre.'), message);
-      if (!texte) return echec(new Error('La note est vide.'), message);
 
-      let corps;
-      if (choisie) {
-        corps = { oeuvre: choisie.id, texte };
-      } else {
+      let cible = choisie;
+      if (!cible) {
         if (!format) return echec(new Error('Choisis un format.'), message);
         // Titre tapé sans passer par les suggestions : s'il désigne une œuvre
         // existante du même format, la note y va.
@@ -462,15 +467,21 @@ function entree(params) {
           return echec(new Error('Plusieurs œuvres portent ce titre : choisis la bonne dans les suggestions.'), message);
         }
         if (memes.length === 0 && avertirSiDoublon(saisie, format, message, enregistrer, 'Enregistrer')) return;
-        corps = memes.length === 1
-          ? { oeuvre: memes[0].id, texte }
-          : { titre: saisie, format, auteur: auteur.input.value, langue: langue.input.value, lien: completerLien(lien.input.value.trim()), texte };
+        cible = memes[0];
       }
+      if (!texte && cible?.statut === 'archive') return echec(new Error('La note est vide.'), message);
+
+      // Sans note : l'œuvre de la liste passe dans l'archive, ou y est créée directement.
+      const champs = { titre: saisie, format, auteur: auteur.input.value, langue: langue.input.value, lien: completerLien(lien.input.value.trim()) };
+      const [chemin, options] = texte
+        ? ['/notes', { methode: 'POST', corps: cible ? { oeuvre: cible.id, texte } : { ...champs, texte } }]
+        : cible ? [`/oeuvres/${cible.id}`, { methode: 'PATCH', corps: { statut: 'archive' } }]
+        : ['/oeuvres', { methode: 'POST', corps: { ...champs, statut: 'archive' } }];
 
       enregistrer.disabled = true;
       try {
-        const { note: creee } = await envoyer('/notes', { methode: 'POST', corps });
-        location.hash = `#/oeuvre/${creee.oeuvre}`;
+        const resultat = await envoyer(chemin, options);
+        location.hash = `#/oeuvre/${resultat.note?.oeuvre || resultat.oeuvre?.id || cible.id}`;
       } catch (erreur) {
         enregistrer.disabled = false;
         echec(erreur, message);
@@ -501,7 +512,8 @@ let tiree = null;
 function collection(statut) {
   const etat = filtres[statut];
   const index = notesParOeuvre();
-  const derniere = (o) => Math.max(o.ajoute, ...(index.get(o.id) || []).map((n) => n.ajout || n.cree));
+  // Archivée sans note : la date d'archivage tient lieu de dernière note.
+  const derniere = (o) => Math.max(o.archivee || o.ajoute, ...(index.get(o.id) || []).map((n) => n.ajout || n.cree));
 
   const toutes = donnees.oeuvres.filter((o) => o.statut === statut);
   if (statut === 'liste') toutes.sort((a, b) => b.ajoute - a.ajoute);
@@ -542,7 +554,8 @@ function collection(statut) {
   function meta(o) {
     if (statut === 'liste') return [descriptif(o), estUnLien(o.lien) && '↗'].filter(Boolean).join(' · ');
     const notes = index.get(o.id) || [];
-    return [o.format, o.langue, pluriel(notes.length, 'note'), notes.length && dateFr(derniere(o))]
+    return [o.format, o.langue, notes.length ? pluriel(notes.length, 'note') : 'sans note',
+      (notes.length || o.archivee) && dateFr(derniere(o))]
       .filter(Boolean).join(' · ');
   }
 
@@ -663,15 +676,25 @@ function vueOeuvre(id) {
     return article;
   }
 
+  // Archiver sans note, ou l'inverse : remettre dans la liste ce qui a été archivé ainsi.
+  const statut = (s) => async () => {
+    try { await envoyer(`/oeuvres/${o.id}`, { methode: 'PATCH', corps: { statut: s } }); afficher(); } catch (err) { echec(err, message); }
+  };
+  const sansNote = !enListe && notes.length === 0 && o.archivee;
+
   const corps = h('div', {});
   function lecture() {
     corps.replaceChildren(
       entete,
       enListe
         ? h('p', { class: 'vide' }, 'Dans la liste, pas encore de notes.')
-        : h('div', { class: 'notes' }, notes.length ? notes.map(vueNote) : h('p', { class: 'vide' }, 'Plus aucune note.')),
+        : h('div', { class: 'notes' }, notes.length ? notes.map(vueNote)
+          : h('p', { class: 'vide' }, sansNote ? `Archivée le ${dateFr(o.archivee)}, sans note.` : 'Plus aucune note.')),
       h('div', { class: 'actions', style: 'justify-content: space-between; margin-top: 20px' },
-        h('a', { class: 'lien-rouge', href: `#/entree?oeuvre=${o.id}` }, enListe ? 'écrire une entrée →' : '+ ajouter une note'),
+        h('div', { class: 'actions' },
+          h('a', { class: 'lien-rouge', href: `#/entree?oeuvre=${o.id}` }, enListe ? 'écrire une entrée →' : '+ ajouter une note'),
+          enListe && h('button', { type: 'button', class: 'discret', onclick: statut('archive') }, 'archiver sans note'),
+          sansNote && h('button', { type: 'button', class: 'discret', onclick: statut('liste') }, 'remettre dans la liste')),
         h('button', { type: 'button', class: 'discret', onclick: edition }, "modifier l'œuvre")),
       message);
   }

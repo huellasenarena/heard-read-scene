@@ -93,23 +93,29 @@ export default {
 // Tout d'un coup : quelques centaines de lignes, l'app filtre et cherche elle-même.
 async function tout(env) {
   const [oeuvres, notes] = await env.DB.batch([
-    env.DB.prepare('select id, titre, format, auteur, langue, lien, statut, ajoute from oeuvres'),
+    env.DB.prepare('select id, titre, format, auteur, langue, lien, statut, ajoute, archivee from oeuvres'),
     env.DB.prepare('select id, oeuvre, texte, cree, modifie, ajout from notes order by cree')
   ]);
   return json({ oeuvres: oeuvres.results, notes: notes.results });
 }
 
-// Ajouter à la liste.
+// Ajouter à la liste, ou directement à l'archive, sans note (`statut: 'archive'`).
 async function creerOeuvre(corps, env) {
-  const o = { id: crypto.randomUUID(), ...champsOeuvre(corps, false), statut: 'liste', ajoute: Date.now() };
+  const ajoute = Date.now();
+  const archivee = corps.statut === 'archive' ? ajoute : null;
+  const o = { id: crypto.randomUUID(), ...champsOeuvre(corps, false), statut: archivee ? 'archive' : 'liste', ajoute, archivee };
   await env.DB.prepare(
-    'insert into oeuvres (id, titre, format, auteur, langue, lien, statut, ajoute) values (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(o.id, o.titre, o.format, o.auteur, o.langue, o.lien, o.statut, o.ajoute).run();
+    'insert into oeuvres (id, titre, format, auteur, langue, lien, statut, ajoute, archivee) values (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(o.id, o.titre, o.format, o.auteur, o.langue, o.lien, o.statut, o.ajoute, o.archivee).run();
   return json({ oeuvre: o }, 201);
 }
 
+// `statut: 'archive'` : archiver sans note une œuvre de la liste ; `'liste'` :
+// l'y remettre (l'app ne le propose que si elle n'a pas de notes).
 async function modifierOeuvre(id, corps, env) {
   const champs = champsOeuvre(corps, true);
+  if (corps.statut === 'archive') Object.assign(champs, { statut: 'archive', archivee: Date.now() });
+  if (corps.statut === 'liste') Object.assign(champs, { statut: 'liste', archivee: null });
   const noms = Object.keys(champs);
   if (noms.length === 0) throw new Refus('rien à modifier');
   const { meta } = await env.DB.prepare(
