@@ -507,13 +507,32 @@ function entree(params) {
   return vue;
 }
 
-// Les filtres de la liste et de l'archive restent tels quels d'un écran à l'autre,
-// comme l'œuvre tirée au hasard (son id), qui ne disparaît pas au retour.
+// Les filtres de la liste et de l'archive restent tels quels d'un écran à l'autre.
 const filtres = {
   liste: { format: '', langue: '', q: '' },
   archive: { format: '', langue: '', q: '' }
 };
-let tiree = null;
+
+// Les tirages au hasard (ids) et celui qu'on regarde, gardés sur l'appareil :
+// on les retrouve au retour, même après avoir fermé la page, et ← → les reparcourent.
+const CLE_TIRAGES = 'hrs-tirages';
+let tirages = { ids: [], pos: -1 };
+try { tirages = JSON.parse(lire(CLE_TIRAGES)) || tirages; } catch { /* illisible */ }
+const garderTirages = () => ecrire(CLE_TIRAGES, JSON.stringify(tirages));
+const tirable = (id) => trouver(id)?.statut === 'liste';
+// Le tirage voisin encore dans la liste (pas = -1 : avant, 1 : après), ou -1.
+function tirageVoisin(i, pas) {
+  for (let j = i + pas; j >= 0 && j < tirages.ids.length; j += pas) if (tirable(tirages.ids[j])) return j;
+  return -1;
+}
+// Celui qu'on regardait ; s'il a quitté la liste, le plus proche avant lui.
+function tirageCourant() {
+  if (tirable(tirages.ids[tirages.pos])) return tirages.pos;
+  const avant = tirageVoisin(tirages.pos, -1);
+  return avant >= 0 ? avant : tirageVoisin(tirages.pos, 1);
+}
+// Après ✓ ou × sur l'œuvre tirée, on en tire une autre.
+let tirerAuRetour = false;
 
 function collection(statut) {
   const etat = filtres[statut];
@@ -577,15 +596,25 @@ function collection(statut) {
     }
   }
 
-  function majTout() { dessinerFiltres(); dessinerResultats(); tiree = null; tirage.replaceChildren(); }
+  function majTout() { dessinerFiltres(); dessinerResultats(); }
+
+  function montrer(i) {
+    tirages.pos = i;
+    garderTirages();
+    dessinerTirage(trouver(tirages.ids[i]), i);
+  }
 
   function tirer() {
-    const candidates = filtrees().filter((o) => o.id !== tiree || filtrees().length === 1);
+    const actuelle = tirages.ids[tirageCourant()];
+    const resultat = filtrees();
+    const candidates = resultat.filter((o) => o.id !== actuelle || resultat.length === 1);
     if (candidates.length === 0) {
       tirage.replaceChildren(h('p', { class: 'vide' }, 'Rien à tirer avec ces filtres.'));
       return;
     }
-    dessinerTirage(candidates[Math.floor(Math.random() * candidates.length)]);
+    tirages.ids.push(candidates[Math.floor(Math.random() * candidates.length)].id);
+    tirages.ids = tirages.ids.slice(-100);
+    montrer(tirages.ids.length - 1);
   }
 
   // Les boutons des œuvres de la liste (lignes et tirage), en deux appuis :
@@ -594,8 +623,9 @@ function collection(statut) {
     const bouton = (fabrique, libelle, confirmation, classe, etiquette, options) => {
       const b = fabrique(libelle, confirmation, async () => {
         try {
+          const etaitTiree = tirages.ids[tirageCourant()] === o.id;
           await envoyer(`/oeuvres/${o.id}`, options);
-          if (tiree === o.id) tiree = null;
+          tirerAuRetour = etaitTiree;
           afficher();
         } catch (err) { avantEchec?.(); echec(err, message); }
       });
@@ -610,10 +640,24 @@ function collection(statut) {
         { methode: 'DELETE' })];
   }
 
-  function dessinerTirage(o) {
-    tiree = o.id;
+  function dessinerTirage(o, i) {
     const message = h('p', { class: 'message', role: 'status' });
     const boutons = boutonsLigne(o, message, () => tirage.firstChild.append(message));
+    const fleche = (pas, signe, etiquette) => {
+      const j = tirageVoisin(i, pas);
+      return h('button', { type: 'button', class: 'discret fleche', 'aria-label': etiquette,
+        disabled: j < 0, onclick: () => montrer(j) }, signe);
+    };
+    const copier = h('button', { type: 'button', class: 'discret copier', onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(o.titre);
+        copier.textContent = 'copié';
+        setTimeout(() => { copier.textContent = 'copier'; }, 1500);
+      } catch {
+        message.textContent = 'Impossible de copier le titre.';
+        tirage.firstChild.append(message);
+      }
+    } }, 'copier');
     tirage.replaceChildren(h('section', { class: 'tirage', 'aria-label': 'Tirage au hasard' },
       h('div', { class: 'tete-tirage' }, h('span', { class: 'etiquette' }, 'au hasard'),
         h('div', { style: 'display: flex; align-items: center; gap: 16px' }, boutons)),
@@ -621,7 +665,9 @@ function collection(statut) {
       h('div', { class: 'meta' }, descriptif(o),
         estUnLien(o.lien) && [' · ', h('a', { href: o.lien, target: '_blank', rel: 'noopener' }, `${domaine(o.lien)} ↗`)]),
       h('div', { class: 'actions' },
+        h('span', { class: 'fleches' }, fleche(-1, '←', 'Tirage précédent'), fleche(1, '→', 'Tirage suivant')),
         h('button', { type: 'button', class: 'discret', style: 'text-decoration: underline; color: var(--encre)', onclick: tirer }, 'autre'),
+        copier,
         h('a', { class: 'lien-rouge', href: `#/entree?oeuvre=${o.id}` }, 'écrire une entrée →'))));
   }
 
@@ -632,9 +678,13 @@ function collection(statut) {
 
   dessinerFiltres();
   dessinerResultats();
-  // Au retour sur la liste, l'œuvre tirée revient, si elle y est encore.
-  const encore = statut === 'liste' && filtrees().find((o) => o.id === tiree);
-  if (encore) dessinerTirage(encore);
+  // Au retour sur la liste, le dernier tirage regardé revient (ou un nouveau, après ✓ ou ×).
+  if (statut === 'liste') {
+    const i = tirerAuRetour ? -1 : tirageCourant();
+    if (tirerAuRetour) tirer();
+    else if (i >= 0) montrer(i);
+  }
+  tirerAuRetour = false;
   return h('div', {},
     retour(),
     h('div', { class: 'barre' },

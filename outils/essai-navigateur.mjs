@@ -165,6 +165,47 @@ await cliquer('.tirage .croix');
 await attendre(800);
 verifier('œuvre supprimée, tirage retiré', !(await texte('.tirage')) &&
   !(await ev("[...document.querySelectorAll('.oeuvres .t')].some((t) => t.textContent === 'Zzyzx tirage')")));
+
+console.log('\ntirage : ← →, copier, et ✓ ou × en tire une autre');
+for (const titre of ['Qwxq un', 'Qwxq deux']) {
+  await fetch('http://localhost:8787/oeuvres', {
+    method: 'POST', headers: { 'X-Phrase': 'essai-local', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ titre, format: 'texte' })
+  });
+}
+await taper('.recherche', '');
+await ev("document.activeElement.blur(); document.dispatchEvent(new Event('visibilitychange'))");
+await attendre(500);
+await taper('.recherche', 'qwxq');
+await cliquer('.barre .secondaire');
+await attendre(100);
+const premier = await texte('.tirage .t');
+await cliquerTexte('.tirage button', 'autre');
+await attendre(100);
+const second = await texte('.tirage .t');
+verifier('« autre » tire la seconde', premier?.startsWith('Qwxq') && second?.startsWith('Qwxq') && premier !== second, `${premier} / ${second}`);
+verifier('→ inactif sur le dernier tirage', await ev(`document.querySelector('.tirage [aria-label="Tirage suivant"]').disabled`));
+await cliquer('.tirage [aria-label="Tirage précédent"]');
+verifier('← revient au tirage précédent', (await texte('.tirage .t')) === premier, await texte('.tirage .t'));
+await cliquer('.tirage [aria-label="Tirage suivant"]');
+verifier('→ revient au suivant', (await texte('.tirage .t')) === second, await texte('.tirage .t'));
+await capture('02d-tirage-fleches.png');
+await ev('location.reload()');
+await attendre(1200);
+verifier('le tirage survit à la page rechargée', (await texte('.tirage .t')) === second, await texte('.tirage .t'));
+await ev('navigator.clipboard.writeText = async (t) => { window.copie = t; }');
+await cliquer('.tirage .copier');
+await attendre(50);
+verifier('copier le titre', (await ev('window.copie')) === second && (await texte('.tirage .copier')) === 'copié', await ev('window.copie'));
+await taper('.recherche', 'qwxq');
+await cliquer('.tirage .croix');
+await cliquer('.tirage .croix');
+await attendre(800);
+verifier('après ×, une autre œuvre est tirée', (await texte('.tirage .t')) === premier, await texte('.tirage .t'));
+await cliquer('.tirage .croix');
+await cliquer('.tirage .croix');
+await attendre(800);
+verifier('plus rien à tirer', !(await texte('.tirage')) && (await texte('.vide')) === 'Rien à tirer avec ces filtres.', await texte('.vide'));
 await fetch('http://localhost:8787/oeuvres', {
   method: 'POST', headers: { 'X-Phrase': 'essai-local', 'Content-Type': 'application/json' },
   body: JSON.stringify({ titre: 'Zzyzx ligne', format: 'texte' })

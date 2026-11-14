@@ -26,6 +26,9 @@ utilisateur, sur iPad et Mac. Le but : **simple, minimaliste, direct.**
   note vide (aussi pour une œuvre nouvelle). Colonne `oeuvres.archivee` (date), qui
   tient lieu de dernière note pour trier l'archive ; « remettre dans la liste » tant
   qu'il n'y a pas de note.
+- **Au hasard** (Liste) : les tirages sont gardés sur l'appareil (`localStorage`
+  `hrs-tirages`, 100 au plus), ← → les reparcourent, même après avoir fermé la page.
+  « copier » met le titre dans le presse-papiers. ✓ ou × sur l'œuvre tirée en tire une autre.
 - **Langue** : langue originale pour les films (`muet`, `sans dialogue` existent aussi),
   langue de l'édition pour les livres. Filtre par langue dans Liste et Archive,
   affiché seulement s'il y a au moins deux langues à choisir.
